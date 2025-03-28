@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Gallifreyan Gambit Simulator</title>
+  <style>
+    body { font-family: Arial, sans-serif; background: #111; color: #eee; padding: 20px; max-width: 600px; margin: auto; }
+    input, button { padding: 8px; font-size: 16px; }
+    .section { margin-bottom: 20px; }
+    .mode-base { color: #4caf50; }
+    .mode-recovery { color: #ff9800; }
+    .warning { color: #f44336; font-weight: bold; }
+    .countdown { font-size: 18px; font-weight: bold; margin-top: 10px; }
+  </style>
+</head>
+<body>
+  <h1>Gallifreyan Gambit</h1>
+  <div class="section">
+    <label>Starting Bankroll: $<input id="bankrollInput" type="number" value="3000" /></label>
+    <button onclick="startSession()">Start Session</button>
+  </div>
+  <div class="section">
+    <label>Enter Spin Result (0–36, 37=00): <input id="spinInput" type="number" min="0" max="37" /></label>
+    <button onclick="processSpin()">Submit Spin</button>
+  </div>
+  <div class="section countdown" id="timer"></div>
+  <div class="section">
+    <p>Current Mode: <span id="modeDisplay" class="mode-base">Base</span></p>
+    <p>Current Bet: <span id="betDisplay">$10</span></p>
+    <p>Betting On: <span id="dozenDisplay">Dozen 2 + Most Recent</span></p>
+    <p>Recovery Level: <span id="recoveryLevel">-</span></p>
+    <p>Bankroll: $<span id="bankroll">3000</span></p>
+    <p>Target Profit: $<span id="target">210</span> (Goal: $<span id="goal">3210</span>)</p>
+  </div>
+  <script>
+    let bankroll = 3000;
+    let baseBet = 5;
+    let target = 210;
+    let recoveryChain = [10, 15, 25, 130, 390, 520, 910];
+    let recoveryIndex = 0;
+    let inRecovery = false;
+    let spinHistory = [1, 2, 3];
+    let timerInterval;
+
+    function getDozen(n) {
+      if (n >= 1 && n <= 12) return 1;
+      if (n >= 13 && n <= 24) return 2;
+      if (n >= 25 && n <= 36) return 3;
+      return 0;
+    }
+
+    function startSession() {
+      bankroll = parseInt(document.getElementById('bankrollInput').value);
+      target = Math.round(bankroll * 0.07);
+      recoveryIndex = 0;
+      inRecovery = false;
+      spinHistory = [1, 2, 3];
+      document.getElementById('bankroll').textContent = bankroll;
+      document.getElementById('target').textContent = target;
+      document.getElementById('goal').textContent = bankroll + target;
+      document.getElementById('modeDisplay').textContent = 'Base';
+      document.getElementById('modeDisplay').className = 'mode-base';
+      document.getElementById('betDisplay').textContent = `$${baseBet * 2}`;
+      document.getElementById('dozenDisplay').textContent = 'Dozen 2 + Most Recent';
+      document.getElementById('recoveryLevel').textContent = '-';
+      startTimer(30 * 60);
+    }
+
+    function processSpin() {
+      const spin = parseInt(document.getElementById('spinInput').value);
+      if (isNaN(spin) || spin < 0 || spin > 37) return;
+      const dozen = getDozen(spin);
+      spinHistory.push(dozen);
+      if (spinHistory.length > 5) spinHistory.shift();
+
+      let mode = 'Base';
+      let betDisplay = `$${baseBet * 2}`;
+      let recoveryLevel = '-';
+      let betDozens = `Dozen 2 + Most Recent`;
+
+      if (inRecovery) {
+        mode = 'Recovery';
+        recoveryLevel = recoveryIndex + 1;
+        const betAmt = recoveryChain[recoveryIndex];
+        betDisplay = `$${betAmt}`;
+
+        if (recoveryIndex < 3) {
+          const targetDozen = spinHistory[spinHistory.length - 1];
+          if (dozen === targetDozen) {
+            bankroll += betAmt * 2;
+            inRecovery = false;
+            recoveryIndex = 0;
+          } else {
+            bankroll -= betAmt;
+            recoveryIndex++;
+          }
+        } else {
+          const d1 = spinHistory[spinHistory.length - 1];
+          let d2 = spinHistory[spinHistory.length - 2];
+          if (d1 === d2) d2 = spinHistory[spinHistory.length - 3];
+          betDozens = `Dozen ${d1} + Dozen ${d2}`;
+          if ([d1, d2].includes(dozen)) {
+            bankroll += (betAmt / 2) * 3;
+            inRecovery = false;
+            recoveryIndex = 0;
+          } else {
+            bankroll -= betAmt;
+            recoveryIndex++;
+          }
+        }
+
+        if (recoveryIndex >= recoveryChain.length) {
+          inRecovery = false;
+          recoveryIndex = 0;
+        }
+
+      } else {
+        const d1 = 2;
+        const d2 = spinHistory[spinHistory.length - 2] !== 2 ? spinHistory[spinHistory.length - 2] : spinHistory[spinHistory.length - 3];
+        betDozens = `Dozen ${d1} + Dozen ${d2}`;
+        if ([d1, d2].includes(dozen)) {
+          bankroll += baseBet * 2;
+        } else {
+          bankroll -= baseBet * 2;
+          inRecovery = true;
+          recoveryIndex = 0;
+        }
+      }
+
+      document.getElementById('modeDisplay').textContent = mode;
+      document.getElementById('modeDisplay').className = inRecovery ? 'mode-recovery' : 'mode-base';
+      document.getElementById('recoveryLevel').textContent = recoveryLevel;
+      document.getElementById('betDisplay').textContent = betDisplay;
+      document.getElementById('dozenDisplay').textContent = betDozens;
+      document.getElementById('bankroll').textContent = bankroll;
+    }
+
+    function startTimer(duration) {
+      let timer = duration, minutes, seconds;
+      clearInterval(timerInterval);
+      timerInterval = setInterval(() => {
+        minutes = parseInt(timer / 60, 10);
+        seconds = parseInt(timer % 60, 10);
+        document.getElementById('timer').textContent = `Session Time Remaining: ${minutes}:${seconds < 10 ? "0" : ""}${seconds}`;
+        if (--timer < 0) {
+          clearInterval(timerInterval);
+          document.getElementById('timer').innerHTML = '<span class="warning">Session timer expired. Please stop playing.</span>';
+        }
+      }, 1000);
+    }
+  </script>
+</body>
+</html>
